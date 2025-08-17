@@ -1,0 +1,65 @@
+pipeline {
+    agent any
+
+    environment {
+        APP_REPO       = 'https://github.com/<username>/cicd-app.git'
+        AWS_ACCOUNT_ID = '<aws_account_id>'
+        AWS_REGION     = 'us-east-1'
+        IMAGE_NAME     = 'cicd-flask'
+        ECR_REPO       = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}"
+        EC2_IP         = '<ec2-public-ip>'
+    }
+
+    stages {
+        stage('Checkout App Repo') {
+            steps {
+                git branch: "${env.BRANCH_NAME}", url: "${APP_REPO}"
+            }
+        }
+
+        stage('Install & Test') {
+            when { not { branch 'main' } }
+            steps {
+                sh 'pip install -r requirements.txt'
+                sh 'pytest -v'
+            }
+        }
+
+        stage('Build Docker Image') {
+            when { branch 'main' }
+            steps {
+                sh 'docker build -t $IMAGE_NAME .'
+                sh 'docker tag $IMAGE_NAME:latest $ECR_REPO:latest'
+            }
+        }
+
+        stage('Push Docker Image to ECR') {
+            when { branch 'main' }
+            steps {
+                withAWS(region: "$AWS_REGION", credentials: 'aws-creds') {
+                    sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO'
+                    sh 'docker push $ECR_REPO:latest'
+                }
+            }
+        }
+
+        stage('Deploy to EC2') {
+            when { branch 'main' }
+            steps {
+                sshagent(['ec2-ssh-key']) {
+                    sh '''
+                    ssh -o StrictHostKeyChecking=no ec2-user@$EC2_IP "docker stop cicd-app || true && docker rm cicd-app || true"
+                    ssh -o StrictHostKeyChecking=no ec2-user@$EC2_IP "docker run -d --name cicd-app -p 8080:8080 $ECR_REPO:latest"
+                    '''
+                }
+            }
+        }
+
+        stage('Health Check') {
+            when { branch 'main' }
+            steps {
+                sh "curl -f http://$EC2_IP:8080/"
+            }
+        }
+    }
+}
