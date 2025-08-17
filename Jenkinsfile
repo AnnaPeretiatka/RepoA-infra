@@ -2,8 +2,9 @@ pipeline{
     agent any 
     environment {
         APP_REPO = 'https://github.com/AnnaPeretiatka/RepoB-app.git'
-        IMAGE_NAME = "annapp" # name on ec2-docker
-        REGISTRY = "992382545251.dkr.ecr.us-east-1.amazonaws.com" // AWS ECR registry
+        AWS_ACCOUNT_ID = '992382545251' // Anna's AWS account ID
+        IMAGE_NAME = "annapp" // name on ec2-docker
+        REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com" // AWS ECR registry
         ECR_REPO = "${REGISTRY}/${IMAGE_NAME}" // ECR repo for pushing
         EC2_IP = '34.226.124.69'
         REGION = 'us-east-1'
@@ -66,7 +67,7 @@ pipeline{
             steps {
                 withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: '992382545251' // anna aws account id
+                    credentialsId: "${AWS_ACCOUNT_ID}" // anna aws account id
                 ]]) {
                     sh """
                         echo "Logging in to ECR..."
@@ -109,4 +110,5 @@ pipeline{
             }
         }
     }
+
 }
